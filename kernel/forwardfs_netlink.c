@@ -89,7 +89,7 @@ forward_snd_msg ( void *msg, int msg_size )
                 return -EXDEV;
         } else 
                 printk ( KERN_INFO "sending message\n");
-        
+        //send
         int res=nlmsg_unicast ( nl_sk,skb_out,pid );
         if ( res<0 )
                 printk ( KERN_INFO "Error while sending bak to user\n" );

@@ -105,7 +105,6 @@ static const struct inode_operations forwardfs_dir_inode_operations = {
 static int
 forward_init ( void )
 {
-        pid = 0;
         printk ( KERN_INFO "ForwardFS Init" );
         nl_sk = netlink_kernel_create ( &init_net, NETLINK_USERSOCK, &cfg ); //initialize netlink socket
         if ( !nl_sk ) {
