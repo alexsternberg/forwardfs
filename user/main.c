@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <unistd.h>
 
 #define NETLINK_NITRO 18
 #define MAX_PAYLOAD 2048
@@ -53,7 +54,7 @@ int main()
     iov.iov_base = (void *)nlh;
     iov.iov_len = nlh->nlmsg_len;
 
-    printf("sending message %i\n", iov.iov_base);
+    printf("sending message %s\n", (char *)iov.iov_base);
     /* msg */
     memset(&msg,0,sizeof(msg));
     msg.msg_name = (void *) &d_nladdr ;
@@ -87,3 +88,5 @@ int main()
     close(fd);
     return (EXIT_SUCCESS);
 }
+
+

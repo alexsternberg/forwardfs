@@ -1,6 +1,7 @@
 KBUILD_CFLAGS += -w
 
-obj-m := forwardfs.o
+obj-m := ffs.o
+ffs-objs := ./forwardfs.o ./forwardfs_netlink.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build  M=$(PWD) modules
