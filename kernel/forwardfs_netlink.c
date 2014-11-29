@@ -6,7 +6,10 @@
 #include "forwardfs.h"
 #include "forwardfs_netlink.h"
 
+#define OKAY "ok"
+
 #define MY_MSG_TYPE 18
+#define REGISTER 16
 
 // DEFINE_MUTEX ( forward_mutex );
 
@@ -31,6 +34,10 @@ forward_rcv_msg ( struct sk_buff *skb, struct nlmsghdr *nlh )
                         char *msg = " Aye!";
                         forward_snd_msg(msg, strlen(msg), pid);
                         
+                        break;
+                case REGISTER:
+                        pid = nlh->nlmsg_pid;
+                        forward_snd_msg(OKAY, strlen(OKAY));
                         break;
         }
         return 0;
@@ -59,7 +66,7 @@ forward_echo_msg(struct nlmsghdr *nlh)
  * Netlink Send Method
  */
 int
-forward_snd_msg ( void *msg, int msg_size, int pid )
+forward_snd_msg ( void *msg, int msg_size )
 {
         //TODO: fill magic numbers
         //get socket buffer
