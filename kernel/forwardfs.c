@@ -2,6 +2,7 @@
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/pagemap.h>
+#include <uapi/linux/stat.h>
 #include "forwardfs_connector.h"
 #include "forwardfs_netlink.h"
 #include "forwardfs.h"
@@ -26,22 +27,63 @@ static const struct super_operations ramfs_ops = {
         .show_options   = generic_show_options,
 };
 
-struct inode* ramfs_get_inode(struct super_block *sb, const struct inode *dir, umode_t mode, dev_t dev){
-        return NULL;
+struct inode_operations ramfs_dir_inode_operations = {};
+
+struct inode_operations ramfs_file_inode_operations = {};
+
+struct file_operations ramfs_file_operations = {};
+
+
+struct inode* ramfs_get_inode ( struct super_block *sb, const struct inode *dir, umode_t mode, dev_t dev )
+{
+        struct inode * inode = new_inode ( sb );
+
+        if ( inode ) {
+                inode->i_ino = get_next_ino();
+                inode_init_owner ( inode, dir, mode );
+//                 inode->i_mapping->a_ops = &ramfs_aops;
+//                 inode->i_mapping->backing_dev_info = &ramfs_backing_dev_info;
+//                 mapping_set_gfp_mask ( inode->i_mapping, GFP_HIGHUSER );
+//                 mapping_set_unevictable ( inode->i_mapping );
+                inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
+                switch ( mode & S_IFMT ) {
+                default:
+                        init_special_inode ( inode, mode, dev );
+                        break;
+                case S_IFREG:
+                        inode->i_op = &ramfs_file_inode_operations;
+                        inode->i_fop = &ramfs_file_operations;
+                        break;
+                case S_IFDIR:
+                        inode->i_op = &ramfs_dir_inode_operations;
+                        inode->i_fop = &simple_dir_operations;
+
+                        /* directory inodes start off with i_nlink == 2 (for "." entry) */
+                        inc_nlink ( inode );
+                        break;
+                case S_IFLNK:
+                        inode->i_op = &page_symlink_inode_operations;
+                        break;
+                }
+        }
+        return inode;
 }
 
 int ramfs_fill_super ( struct super_block *sb, void *data, int silent )
 {
         struct forward_fs_info *fsi;
         struct inode *inode;
-        int err;
+        int err = 0;
 
         save_mount_options ( sb, data );
 
+        printk ( KERN_INFO "allocating memory\n" );
         fsi = kzalloc ( sizeof ( struct forward_fs_info ), GFP_KERNEL );
         sb->s_fs_info = fsi;
-        if ( !fsi )
+        if ( !fsi ) {
+                printk ( KERN_ERR "could not allocate for fs_info\n" );
                 return -ENOMEM;
+        }
 
         //err = ramfs_parse_options ( data, &fsi->mount_opts );
         if ( err )
@@ -56,14 +98,16 @@ int ramfs_fill_super ( struct super_block *sb, void *data, int silent )
 
         inode = ramfs_get_inode ( sb, NULL, S_IFDIR | fsi->mount_opts.mode, 0 );
         sb->s_root = d_make_root ( inode );
-        if ( !sb->s_root )
+        if ( !sb->s_root ) {
+                printk ( KERN_ERR "could not get root dentry\n" );
                 return -ENOMEM;
+        }
 
         return 0;
 }
 
 struct dentry *forward_mount ( struct file_system_type *fs_type,
-                                 int flags, const char *dev_name, void *data )
+                               int flags, const char *dev_name, void *data )
 {
         return mount_nodev ( fs_type, flags, data, ramfs_fill_super );
 }
