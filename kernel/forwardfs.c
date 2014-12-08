@@ -3,38 +3,35 @@
 #include <linux/fs.h>
 #include <linux/pagemap.h>
 #include <uapi/linux/stat.h>
-// #include "forwardfs_connector.h"
 #include "forwardfs_netlink.h"
 #include "forwardfs.h"
 
 #define FORWARDFS_MAGIC 0x416F5
 
-#define OKAY "ok"
-
 /**
  * file_system_type for forwardfs
  */
 // static struct file_system_type forwardfs_fs_type;
-struct ramfs_mount_opts {
+struct forwardfs_mount_opts {
         umode_t mode;
 };
 
 struct forward_fs_info {
-        struct ramfs_mount_opts mount_opts;
+        struct forwardfs_mount_opts mount_opts;
 };
 
-static const struct super_operations ramfs_ops = {
+static const struct super_operations forwardfs_ops = {
         .statfs         = simple_statfs,
         .drop_inode     = generic_delete_inode,
         .show_options   = generic_show_options,
 };
 
-struct inode* ramfs_get_inode ( struct super_block *sb, const struct inode *dir, umode_t mode, dev_t dev );
+struct inode* forwardfs_get_inode ( struct super_block *sb, const struct inode *dir, umode_t mode, dev_t dev );
 
 static int
-ramfs_mknod ( struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev )
+forwardfs_mknod ( struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev )
 {
-        struct inode * inode = ramfs_get_inode ( dir->i_sb, dir, mode, dev );
+        struct inode * inode = forwardfs_get_inode ( dir->i_sb, dir, mode, dev );
         int error = -ENOSPC;
 
         if ( inode ) {
@@ -46,25 +43,25 @@ ramfs_mknod ( struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev 
         return error;
 }
 
-static int ramfs_mkdir ( struct inode * dir, struct dentry * dentry, umode_t mode )
+static int forwardfs_mkdir ( struct inode * dir, struct dentry * dentry, umode_t mode )
 {
-        int retval = ramfs_mknod ( dir, dentry, mode | S_IFDIR, 0 );
+        int retval = forwardfs_mknod ( dir, dentry, mode | S_IFDIR, 0 );
         if ( !retval )
                 inc_nlink ( dir );
         return retval;
 }
 
-static int ramfs_create ( struct inode *dir, struct dentry *dentry, umode_t mode, bool excl )
+static int forwardfs_create ( struct inode *dir, struct dentry *dentry, umode_t mode, bool excl )
 {
-        return ramfs_mknod ( dir, dentry, mode | S_IFREG, 0 );
+        return forwardfs_mknod ( dir, dentry, mode | S_IFREG, 0 );
 }
 
-static int ramfs_symlink ( struct inode * dir, struct dentry *dentry, const char * symname )
+static int forwardfs_symlink ( struct inode * dir, struct dentry *dentry, const char * symname )
 {
         struct inode *inode;
         int error = -ENOSPC;
 
-        inode = ramfs_get_inode ( dir->i_sb, dir, S_IFLNK|S_IRWXUGO, 0 );
+        inode = forwardfs_get_inode ( dir->i_sb, dir, S_IFLNK|S_IRWXUGO, 0 );
         if ( inode ) {
                 int l = strlen ( symname ) +1;
 //                 error = page_symlink ( inode, symname, l );
@@ -79,32 +76,81 @@ static int ramfs_symlink ( struct inode * dir, struct dentry *dentry, const char
 }
 
 struct inode_operations forwardfs_dir_inode_operations = {
-        .create         = ramfs_create,
+        .create         = forwardfs_create,
         .lookup         = simple_lookup,
         .link           = simple_link,
         .unlink         = simple_unlink,
-        .symlink        = ramfs_symlink,
-        .mkdir          = ramfs_mkdir,
+        .symlink        = forwardfs_symlink,
+        .mkdir          = forwardfs_mkdir,
         .rmdir          = simple_rmdir,
-        .mknod          = ramfs_mknod,
+        .mknod          = forwardfs_mknod,
         .rename         = simple_rename,
+        
 };
 
-struct inode_operations ramfs_file_inode_operations = {};
+static ssize_t forward_file_open(struct inode *inod, struct file* filp){
+        if(!nl_sk) return -EXDEV; //must have a socket
+        
+        mutex_lock(&forward_nl_mutex);//lock socket global
+        mutex_lock(&forward_nl_recv_mutex); //lock recv buffer
+        
+        //send open
+        
+        struct payload p;
+        p.data = kmalloc(sizeof(inod->i_ino),0);
+        p.length = sizeof(inod->i_ino);
+        memcpy(p.data, inod->i_ino, sizeof(inod->i_ino));
+        forward_send_simple(FFS_OPEN, &p);
+        
+        
+        mutex_lock(&forward_nl_recv_mutex); //block until buffer filled
+        
+        
+        
+        
+        filp->private_data = (void*) inod->i_ino;
+        inod->i_size = payload.data;
+        
+        
+        
+        kfree(payload.data); payload.data = NULL; payload.length = 0;
+        
+        mutex_unlock(&forward_nl_recv_mutex);
+        mutex_unlock(&forward_nl_mutex); //release socket
+        return 0; 
+        
+}
 
-struct file_operations ramfs_file_operations = {};
+static ssize_t forward_file_read(struct file *filp, char __user *buf, size_t count, loff_t *offset){
+        if(!nl_sk) return -EXDEV; //must have a socket
+        return; 
+        
+}
 
-struct inode* ramfs_get_inode ( struct super_block *sb, const struct inode *dir, umode_t mode, dev_t dev )
+static ssize_t forward_file_write(struct file *filp, char __user *buf, size_t count, loff_t *offset){
+        if(!nl_sk) return -EXDEV; //must have a socket
+        return; 
+        
+}
+
+struct inode_operations forwardfs_file_inode_operations;
+
+struct file_operations forwardfs_file_operations = {
+        .open           = forward_file_open,
+        .read           = forward_file_read,
+        .write          = forward_file_write,
+};
+
+struct inode* forwardfs_get_inode ( struct super_block *sb, const struct inode *dir, umode_t mode, dev_t dev )
 {
         printk(KERN_INFO "called %s\n", __func__);
-        struct sk_buff *skb;
         struct inode * inode = new_inode ( sb );
 
         if ( inode ) {
                 inode->i_ino = get_next_ino();
                 inode_init_owner ( inode, dir, mode );
-//                 inode->i_mapping->a_ops = &ramfs_aops;
-//                 inode->i_mapping->backing_dev_info = &ramfs_backing_dev_info;
+//                 inode->i_mapping->a_ops = &forwardfs_aops;
+//                 inode->i_mapping->backing_dev_info = &forwardfs_backing_dev_info;
 //                 mapping_set_gfp_mask ( inode->i_mapping, GFP_HIGHUSER );
 //                 mapping_set_unevictable ( inode->i_mapping );
                 inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
@@ -116,8 +162,8 @@ struct inode* ramfs_get_inode ( struct super_block *sb, const struct inode *dir,
                         break;
                 case S_IFREG:
                         printk ( KERN_INFO "getting file inode\n" );
-                        inode->i_op = &ramfs_file_inode_operations;
-                        inode->i_fop = &ramfs_file_operations;
+                        inode->i_op = &forwardfs_file_inode_operations;
+                        inode->i_fop = &forwardfs_file_operations;
                         break;
                 case S_IFDIR:
                         printk ( KERN_INFO "getting dir inode\n" );
@@ -125,10 +171,6 @@ struct inode* ramfs_get_inode ( struct super_block *sb, const struct inode *dir,
 //                         forward_snd_msg(msg, strlen(msg));
                         inode->i_op = &forwardfs_dir_inode_operations;
                         inode->i_fop = &simple_dir_operations;
-                        mutex_lock(&forward_nl_mutex); //get lock for socket
-                        forward_snd_msg(msg, strlen(msg));
-                        netlink_rcv_skb(skb, &forward_rcv_msg);
-                        mutex_unlock(&forward_nl_mutex);
                         /* directory inodes start off with i_nlink == 2 (for "." entry) */
                         inc_nlink ( inode );
                         break;
@@ -141,34 +183,16 @@ struct inode* ramfs_get_inode ( struct super_block *sb, const struct inode *dir,
         return inode;
 }
 
-int ramfs_fill_super ( struct super_block *sb, void *data, int silent )
+int forwardfs_fill_super ( struct super_block *sb, void *data, int silent )
 {
         struct forward_fs_info *fsi;
         struct inode *inode;
-        int err = 0;
 
-        save_mount_options ( sb, data );
-
-        printk ( KERN_INFO "allocating memory\n" );
-        fsi = kzalloc ( sizeof ( struct forward_fs_info ), GFP_KERNEL );
-        sb->s_fs_info = fsi;
-        if ( !fsi ) {
-                printk ( KERN_ERR "could not allocate for fs_info\n" );
-                return -ENOMEM;
-        }
-
-        //err = ramfs_parse_options ( data, &fsi->mount_opts );
-        if ( err )
-                return err;
-
-        sb->s_maxbytes          = MAX_LFS_FILESIZE;
-        sb->s_blocksize         = PAGE_CACHE_SIZE;
-        sb->s_blocksize_bits    = PAGE_CACHE_SHIFT;
         sb->s_magic             = FORWARDFS_MAGIC;
-        sb->s_op                = &ramfs_ops;
+        sb->s_op                = &forwardfs_ops;
         sb->s_time_gran         = 1;
 
-        inode = ramfs_get_inode ( sb, NULL, S_IFDIR | fsi->mount_opts.mode, 0 );
+        inode = forwardfs_get_inode ( sb, NULL, S_IFDIR | fsi->mount_opts.mode, 0 );
         sb->s_root = d_make_root ( inode );
         if ( !sb->s_root ) {
                 printk ( KERN_ERR "could not get root dentry\n" );
@@ -181,7 +205,7 @@ int ramfs_fill_super ( struct super_block *sb, void *data, int silent )
 struct dentry *forward_mount ( struct file_system_type *fs_type,
                                int flags, const char *dev_name, void *data )
 {
-        return mount_nodev ( fs_type, flags, data, ramfs_fill_super );
+        return mount_nodev ( fs_type, flags, data, forwardfs_fill_super );
 }
 
 static void forward_kill_sb ( struct super_block *sb )
@@ -196,24 +220,6 @@ static struct file_system_type forwardfs_fs_type = {
         .kill_sb        = forward_kill_sb,
         .fs_flags       = FS_USERNS_MOUNT,
 };
-
-/*
-static const struct inode_operations forwardfs_dir_inode_operations = {
-         .create         = ramfs_create,
-         .lookup         = simple_lookup,
-         .link           = simple_link,
-         .unlink         = simple_unlink,
-         .symlink        = ramfs_symlink,
-         .mkdir          = ramfs_mkdir,
-         .rmdir          = simple_rmdir,
-         .mknod          = ramfs_mknod,
-         .rename         = simple_rename,
-};
-*/
-
-
-
-
 
 /**
  * Module init
