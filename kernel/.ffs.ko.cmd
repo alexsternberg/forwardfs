@@ -1,1 +1,0 @@
-cmd_/home/alex.sternberg/projects/forwardfs.git/kernel/ffs.ko := ld -r -m elf_i386 -T /usr/src/kernels/3.11.10-301.fc20.i686/scripts/module-common.lds --build-id  -o /home/alex.sternberg/projects/forwardfs.git/kernel/ffs.ko /home/alex.sternberg/projects/forwardfs.git/kernel/ffs.o /home/alex.sternberg/projects/forwardfs.git/kernel/ffs.mod.o

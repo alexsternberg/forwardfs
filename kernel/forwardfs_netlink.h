@@ -12,13 +12,18 @@
 #include "../common/forwardfs_common.h"
 
 extern int forward_snd_msg( void*, int);
-extern int forward_send_simple(uint32_t, struct payload*);
+extern int forward_send_simple(uint32_t, char*);
 extern struct sockaddr_nl client;
 
 extern struct mutex forward_nl_mutex;
 extern struct mutex forward_nl_recv_mutex;
 
-extern struct payload payload;
+extern struct payload *msg_payload;
+extern char *global_payload;
+extern char *open_payload;
+extern char *read_payload;
+extern char *write_payload;
+#define PAYLOAD_FREE(P) kfree(P); P = NULL
 #define MAX_MSG_SIZE            4096
 
 #endif

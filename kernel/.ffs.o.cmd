@@ -1,1 +1,0 @@
-cmd_/home/alex.sternberg/projects/forwardfs.git/kernel/ffs.o := ld -m elf_i386   -r -o /home/alex.sternberg/projects/forwardfs.git/kernel/ffs.o /home/alex.sternberg/projects/forwardfs.git/kernel/./forwardfs.o /home/alex.sternberg/projects/forwardfs.git/kernel/./forwardfs_netlink.o 
